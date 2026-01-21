@@ -10,6 +10,8 @@ class UserProfile(models.Model):
     is_active_session = models.BooleanField(default=False)
     last_activity = models.DateTimeField(auto_now=True)
     total_messages = models.IntegerField(default=0)
+    avatar = models.URLField(blank=True, null=True)
+    status = models.CharField(max_length=200, blank=True, default='Hey there! I am using White Beat')
     
     class Meta:
         verbose_name = 'User Profile'
@@ -18,23 +20,42 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} ({self.role})"
 
-class ChatMessage(models.Model):
-    """Store chat messages for analytics"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='messages')
-    prompt = models.TextField()
-    response = models.TextField()
-    model_used = models.CharField(max_length=50, default='gpt-3.5-turbo')
-    tokens_used = models.IntegerField(default=0)
+class Conversation(models.Model):
+    """Represents a chat conversation between two users"""
+    user1 = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversations_as_user1')
+    user2 = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversations_as_user2')
     created_at = models.DateTimeField(auto_now_add=True)
-    response_time = models.FloatField(default=0.0)  # in seconds
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name = 'Chat Message'
-        verbose_name_plural = 'Chat Messages'
-        ordering = ['-created_at']
+        verbose_name = 'Conversation'
+        verbose_name_plural = 'Conversations'
+        ordering = ['-updated_at']
+        unique_together = [['user1', 'user2']]
     
     def __str__(self):
-        return f"{self.user.username} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.user1.username} <-> {self.user2.username}"
+    
+    def get_other_user(self, user):
+        """Get the other user in the conversation"""
+        return self.user2 if self.user1 == user else self.user1
+
+class Message(models.Model):
+    """Individual messages in a conversation"""
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_messages')
+    content = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = 'Message'
+        verbose_name_plural = 'Messages'
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"{self.sender.username} -> {self.receiver.username}: {self.content[:50]}"
 
 class APILog(models.Model):
     """Log all API requests"""
