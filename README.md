@@ -1,12 +1,12 @@
-# 🚀 White Beat Backend
+# 💬 White Beat Backend - User Chat System
 
 <div align="center">
 
 ![Django](https://img.shields.io/badge/Django-4.2-092e20?style=for-the-badge&logo=django)
-![OpenAI](https://img.shields.io/badge/OpenAI-API-412991?style=for-the-badge&logo=openai)
+![REST API](https://img.shields.io/badge/REST-API-009688?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**Django REST API with OpenAI Integration**
+**Django REST API for User-to-User Messaging (WhatsApp-like)**
 
 [Frontend Repo](https://github.com/Aryankaushik541/white-beat-frontend) • [API Docs](#-api-endpoints) • [Deploy Guide](#-deployment)
 
@@ -17,7 +17,8 @@
 ## ✨ Features
 
 - 🔐 **Authentication API** - Smart login with admin/user role detection
-- 🤖 **OpenAI Integration** - GPT-3.5-turbo chat completions
+- 💬 **User-to-User Chat** - WhatsApp-like messaging system
+- 👥 **User Management** - List users, view profiles, online status
 - 📊 **Admin Analytics** - Dashboard statistics API
 - 🔒 **CORS Enabled** - Ready for React frontend
 - 🚀 **RESTful Design** - Clean, documented endpoints
@@ -31,7 +32,6 @@
 ### Prerequisites
 - Python 3.11+
 - pip and virtualenv
-- OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
 
 ### Installation
 
@@ -42,14 +42,10 @@ cd white-beat-backend
 
 # Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\\Scripts\\activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Setup environment variables
-cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
 
 # Run migrations
 python manage.py makemigrations
@@ -66,34 +62,33 @@ Visit **http://localhost:8000/api/health/** to verify installation
 
 ---
 
-## 🔑 Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Required
-OPENAI_API_KEY=sk-your-openai-api-key-here
-
-# Django Settings
-SECRET_KEY=your-django-secret-key-here
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# Database (optional, defaults to SQLite)
-DATABASE_URL=sqlite:///db.sqlite3
-```
-
-### Generate Django Secret Key
-```python
-from django.core.management.utils import get_random_secret_key
-print(get_random_secret_key())
-```
-
----
-
 ## 📡 API Endpoints
 
 ### Authentication
+
+#### Signup
+```http
+POST /api/signup/
+Content-Type: application/json
+
+{
+  "username": "john",
+  "password": "password123",
+  "email": "john@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "role": "user",
+  "username": "john",
+  "email": "john@example.com",
+  "user_id": 1,
+  "message": "Account created successfully! You can now login."
+}
+```
 
 #### Login
 ```http
@@ -101,64 +96,171 @@ POST /api/login/
 Content-Type: application/json
 
 {
-  "username": "admin",
-  "password": "admin123"
+  "username": "john",
+  "password": "password123"
 }
 ```
 
 **Response:**
 ```json
 {
-  "role": "admin",
-  "username": "admin",
-  "message": "Admin login successful"
+  "role": "user",
+  "username": "john",
+  "email": "john@example.com",
+  "message": "User login successful",
+  "user_id": 1,
+  "is_admin_group": false
 }
 ```
 
-**Admin Credentials:**
-- Username: `admin`
-- Password: `admin123`
-- Returns: `role: "admin"`
+---
 
-**User Credentials:**
-- Username: Any other username
-- Password: Any password
-- Returns: `role: "user"`
+### User Management
+
+#### Get All Users
+```http
+GET /api/users/?username=john
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": 2,
+      "username": "jane",
+      "email": "jane@example.com",
+      "status": "Hey there! I am using White Beat",
+      "is_online": true,
+      "last_activity": "2026-01-21T22:30:00Z"
+    }
+  ],
+  "count": 1
+}
+```
 
 ---
 
-### AI Chat
+### Messaging
+
+#### Get Conversations
+```http
+GET /api/conversations/?username=john
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "conversations": [
+    {
+      "id": 1,
+      "other_user": {
+        "id": 2,
+        "username": "jane",
+        "email": "jane@example.com",
+        "status": "Available",
+        "is_online": true
+      },
+      "last_message": {
+        "content": "Hey, how are you?",
+        "created_at": "2026-01-21T22:30:00Z",
+        "sender": "jane"
+      },
+      "unread_count": 2,
+      "updated_at": "2026-01-21T22:30:00Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Get Messages
+```http
+GET /api/messages/?username=john&other_username=jane
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "conversation_id": 1,
+  "messages": [
+    {
+      "id": 1,
+      "sender": "john",
+      "receiver": "jane",
+      "content": "Hello!",
+      "is_read": true,
+      "created_at": "2026-01-21T22:25:00Z",
+      "is_mine": true
+    },
+    {
+      "id": 2,
+      "sender": "jane",
+      "receiver": "john",
+      "content": "Hey, how are you?",
+      "is_read": false,
+      "created_at": "2026-01-21T22:30:00Z",
+      "is_mine": false
+    }
+  ],
+  "count": 2
+}
+```
 
 #### Send Message
 ```http
-POST /api/chat/
+POST /api/send-message/
 Content-Type: application/json
 
 {
-  "prompt": "What is artificial intelligence?"
+  "sender": "john",
+  "receiver": "jane",
+  "content": "I'm doing great, thanks!"
 }
 ```
 
 **Response:**
 ```json
 {
-  "response": "Artificial intelligence (AI) is...",
-  "model": "gpt-3.5-turbo"
+  "success": true,
+  "message": {
+    "id": 3,
+    "sender": "john",
+    "receiver": "jane",
+    "content": "I'm doing great, thanks!",
+    "created_at": "2026-01-21T22:35:00Z",
+    "is_read": false
+  }
 }
 ```
 
-**Error Response (No API Key):**
+#### Mark as Read
+```http
+POST /api/mark-as-read/
+Content-Type: application/json
+
+{
+  "username": "john",
+  "conversation_id": 1
+}
+```
+
+**Response:**
 ```json
 {
-  "response": "OpenAI API not configured. Your message: \"...\". Please add OPENAI_API_KEY to .env file."
+  "success": true,
+  "marked_read": 2
 }
 ```
 
 ---
 
-### Admin Statistics
+### Admin Endpoints
 
-#### Get Stats
+#### Get Statistics
 ```http
 GET /api/admin/stats/
 ```
@@ -166,12 +268,39 @@ GET /api/admin/stats/
 **Response:**
 ```json
 {
-  "total_users": 1234,
-  "api_calls_today": 45678,
-  "active_sessions": 89,
-  "revenue": 12345,
-  "user_growth": [60, 75, 85, 70, 90, 95],
-  "api_usage": [80, 65, 90, 75, 85, 70]
+  "total_users": 150,
+  "api_calls_today": 1234,
+  "active_sessions": 45,
+  "total_messages": 5678,
+  "revenue": 11.36,
+  "user_growth": [10, 15, 20, 18, 25, 30],
+  "api_usage": [80, 65, 90, 75, 85, 70],
+  "recent_users": [...],
+  "recent_logs": [...]
+}
+```
+
+#### Make Admin
+```http
+POST /api/make-admin/
+Content-Type: application/json
+
+{
+  "admin_username": "admin",
+  "admin_password": "admin123",
+  "target_username": "john"
+}
+```
+
+#### Remove Admin
+```http
+POST /api/remove-admin/
+Content-Type: application/json
+
+{
+  "admin_username": "admin",
+  "admin_password": "admin123",
+  "target_username": "john"
 }
 ```
 
@@ -188,8 +317,20 @@ GET /api/health/
 ```json
 {
   "status": "healthy",
-  "service": "White Beat Backend",
-  "openai_configured": true
+  "service": "White Beat Backend - User Chat",
+  "database_connected": true,
+  "admin_group_exists": true,
+  "features": {
+    "user_to_user_chat": true,
+    "group_based_admin": true,
+    "signup": true
+  },
+  "stats": {
+    "total_users": 150,
+    "total_messages": 5678,
+    "total_conversations": 89,
+    "admin_users": 3
+  }
 }
 ```
 
@@ -209,17 +350,47 @@ white-beat-backend/
 │   ├── __init__.py
 │   ├── views.py             # API endpoints
 │   ├── urls.py              # API routes
-│   ├── models.py            # Database models
+│   ├── models.py            # Database models (User, Conversation, Message)
 │   ├── admin.py             # Django admin config
 │   └── tests.py             # Unit tests
 ├── manage.py
 ├── requirements.txt
 ├── Procfile                 # Heroku deployment
 ├── runtime.txt              # Python version
-├── .env.example
 ├── .gitignore
 └── README.md
 ```
+
+---
+
+## 🗄️ Database Models
+
+### UserProfile
+- Extended user information
+- Online status tracking
+- Message count
+- Custom status message
+
+### Conversation
+- Links two users
+- Tracks last update time
+- Ensures unique user pairs
+
+### Message
+- Individual chat messages
+- Read/unread status
+- Sender and receiver tracking
+- Timestamp
+
+### APILog
+- Request logging
+- Performance monitoring
+- User activity tracking
+
+### SystemStats
+- Daily statistics
+- User growth metrics
+- Revenue tracking
 
 ---
 
@@ -227,11 +398,10 @@ white-beat-backend/
 
 - **Django 4.2** - Web framework
 - **Django REST Framework** - API toolkit
-- **OpenAI API** - GPT-3.5-turbo integration
 - **django-cors-headers** - CORS support
-- **python-decouple** - Environment management
-- **Gunicorn** - Production WSGI server
+- **SQLite** - Development database
 - **PostgreSQL** - Production database (optional)
+- **Gunicorn** - Production WSGI server
 
 ---
 
@@ -249,195 +419,69 @@ coverage run --source='.' manage.py test
 coverage report
 ```
 
-**Test Coverage:**
-- ✅ Health check endpoint
-- ✅ Admin login
-- ✅ User login
-- ✅ Admin statistics
-- ✅ Chat endpoint (mocked)
-
 ---
 
-## 🌐 Deployment
+## 🚀 Deployment
 
 ### Heroku
 
 ```bash
-# Install Heroku CLI
-brew tap heroku/brew && brew install heroku
-
-# Login
+# Login to Heroku
 heroku login
 
 # Create app
-heroku create white-beat-backend
+heroku create your-app-name
 
-# Set environment variables
-heroku config:set SECRET_KEY="your-secret-key"
-heroku config:set OPENAI_API_KEY="your-openai-key"
-heroku config:set DEBUG=False
-heroku config:set ALLOWED_HOSTS="white-beat-backend.herokuapp.com"
+# Add PostgreSQL
+heroku addons:create heroku-postgresql:hobby-dev
 
 # Deploy
 git push heroku main
 
 # Run migrations
 heroku run python manage.py migrate
+
+# Create superuser
 heroku run python manage.py createsuperuser
 ```
 
-### Railway
-
+### Environment Variables (Heroku)
 ```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-
-# Set environment variables in Railway dashboard
-```
-
-### Render
-
-1. Go to [render.com](https://render.com)
-2. New → Web Service
-3. Connect GitHub repository
-4. Configure:
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn whitebeat_backend.wsgi:application`
-5. Add environment variables
-6. Deploy
-
----
-
-## 🔒 CORS Configuration
-
-The backend is configured to accept requests from:
-- `http://localhost:3000` (React dev server)
-- `http://127.0.0.1:3000`
-
-To add production frontend URL, update `settings.py`:
-
-```python
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://your-frontend-domain.com",
-]
+heroku config:set SECRET_KEY=your-secret-key
+heroku config:set DEBUG=False
+heroku config:set ALLOWED_HOSTS=your-app-name.herokuapp.com
 ```
 
 ---
 
-## 📊 Django Admin
+## 📝 License
 
-Access the Django admin panel at `/admin/`:
-
-```bash
-# Create superuser
-python manage.py createsuperuser
-
-# Visit http://localhost:8000/admin/
-```
+MIT License - see LICENSE file for details
 
 ---
 
-## 🔧 Development
+## 👨‍💻 Author
 
-### Add New Endpoint
-
-1. **Create view in `api/views.py`:**
-```python
-@api_view(['GET'])
-def my_endpoint(request):
-    return Response({'message': 'Hello World'})
-```
-
-2. **Add route in `api/urls.py`:**
-```python
-path('my-endpoint/', views.my_endpoint, name='my_endpoint'),
-```
-
-3. **Test:**
-```bash
-curl http://localhost:8000/api/my-endpoint/
-```
-
----
-
-## 🐛 Troubleshooting
-
-### OpenAI API Errors
-
-**Issue:** `OpenAI API not configured`
-- **Solution:** Add `OPENAI_API_KEY` to `.env` file
-
-**Issue:** `Rate limit exceeded`
-- **Solution:** Check OpenAI account usage and billing
-
-### CORS Errors
-
-**Issue:** `CORS policy blocked`
-- **Solution:** Add frontend URL to `CORS_ALLOWED_ORIGINS` in `settings.py`
-
-### Database Errors
-
-**Issue:** `no such table`
-- **Solution:** Run migrations: `python manage.py migrate`
-
----
-
-## 📦 Dependencies
-
-```txt
-Django==4.2.7                 # Web framework
-djangorestframework==3.14.0   # REST API toolkit
-django-cors-headers==4.3.1    # CORS support
-openai==1.6.1                 # OpenAI API client
-python-decouple==3.8          # Environment variables
-gunicorn==21.2.0              # Production server
-psycopg2-binary==2.9.9        # PostgreSQL adapter
-```
+**Aryan Kaushik**
+- GitHub: [@Aryankaushik541](https://github.com/Aryankaushik541)
+- Frontend: [white-beat-frontend](https://github.com/Aryankaushik541/white-beat-frontend)
 
 ---
 
 ## 🤝 Contributing
 
-Contributions welcome! Please follow these steps:
+Contributions, issues, and feature requests are welcome!
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🔗 Related Repositories
-
-- **Frontend:** [white-beat-frontend](https://github.com/Aryankaushik541/white-beat-frontend)
-- **Backend:** [white-beat-backend](https://github.com/Aryankaushik541/white-beat-backend)
-
----
-
-## 📞 Support
-
-- 📧 Open an issue on GitHub
-- 📚 Check the [Frontend Repo](https://github.com/Aryankaushik541/white-beat-frontend)
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
 <div align="center">
 
-**Built with ❤️ using Django and OpenAI**
-
-⭐ Star this repo if you find it helpful!
+**Made with ❤️ using Django**
 
 </div>
