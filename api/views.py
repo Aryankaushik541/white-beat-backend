@@ -4,29 +4,13 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth.models import User, Group
 from django.contrib.auth import authenticate
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Sum, Q, Max
 from django.utils import timezone
 from datetime import timedelta
-import random
 import traceback
 import time
 
-from .models import UserProfile, ChatMessage, APILog, SystemStats
-
-# Import local AI and OSINT engines
-try:
-    from .ai_engine import chat_with_ai, get_ai_engine
-    AI_AVAILABLE = True
-except Exception as e:
-    print(f"⚠️ AI Engine not available: {e}")
-    AI_AVAILABLE = False
-
-try:
-    from .osint_engine import osint_search, get_osint_engine
-    OSINT_AVAILABLE = True
-except Exception as e:
-    print(f"⚠️ OSINT Engine not available: {e}")
-    OSINT_AVAILABLE = False
+from .models import UserProfile, Conversation, Message, APILog, SystemStats
 
 def log_api_request(request, endpoint, status_code, response_time):
     """Helper function to log API requests"""
@@ -50,6 +34,18 @@ def log_api_request(request, endpoint, status_code, response_time):
 def is_user_admin(user):
     """Check if user is in Admin group"""
     return user.groups.filter(name='Admin').exists()
+
+def get_or_create_conversation(user1, user2):
+    """Get or create a conversation between two users"""
+    # Ensure consistent ordering to avoid duplicates
+    if user1.id > user2.id:
+        user1, user2 = user2, user1
+    
+    conversation, created = Conversation.objects.get_or_create(
+        user1=user1,
+        user2=user2
+    )
+    return conversation
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -364,144 +360,253 @@ def remove_admin(request):
             status=status.HTTP_404_NOT_FOUND
         )
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def chat(request):
-    """Handle AI chat with local AI engine"""
-    start_time = time.time()
-    prompt = request.data.get('prompt')
-    username = request.data.get('username', 'anonymous')
-    
-    if not prompt:
-        response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/chat/', 400, response_time)
-        return Response({'error': 'Prompt is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Get or create user
-    user, _ = User.objects.get_or_create(
-        username=username,
-        defaults={'email': f'{username}@whitebeat.com'}
-    )
-    
-    # Check if AI engine is available
-    if not AI_AVAILABLE:
-        demo_response = "Local AI engine not initialized. Please install required packages: pip install transformers torch"
-        
-        ChatMessage.objects.create(
-            user=user,
-            prompt=prompt,
-            response=demo_response,
-            model_used='unavailable',
-            tokens_used=0,
-            response_time=(time.time() - start_time)
-        )
-        
-        response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/chat/', 200, response_time)
-        
-        return Response({
-            'response': demo_response,
-            'model': 'unavailable',
-            'demo': True
-        })
-    
-    try:
-        print(f"🔄 Processing chat with local AI: {prompt[:50]}...")
-        
-        # Get AI response
-        ai_response = chat_with_ai(prompt)
-        
-        # Get model info
-        engine = get_ai_engine()
-        model_name = getattr(engine, 'model_name', 'local-ai')
-        
-        # Log message
-        ChatMessage.objects.create(
-            user=user,
-            prompt=prompt,
-            response=ai_response,
-            model_used=model_name,
-            tokens_used=len(prompt.split()) + len(ai_response.split()),  # Approximate
-            response_time=(time.time() - start_time)
-        )
-        
-        # Update user profile
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.total_messages += 1
-        profile.save()
-        
-        print(f"✅ Local AI response generated")
-        
-        response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/chat/', 200, response_time)
-        
-        return Response({
-            'response': ai_response,
-            'model': model_name,
-            'demo': False,
-            'engine': 'local-ai'
-        })
-        
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ AI Error: {error_msg}")
-        
-        response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/chat/', 500, response_time)
-        
-        return Response({
-            'response': f"Error: {error_msg}",
-            'error': error_msg,
-            'model': 'error-mode'
-        })
+# ============= USER-TO-USER MESSAGING ENDPOINTS =============
 
-@api_view(['POST'])
+@api_view(['GET'])
 @permission_classes([AllowAny])
-def osint_lookup(request):
-    """OSINT intelligence gathering endpoint"""
+def get_users(request):
+    """Get list of all users for chat"""
     start_time = time.time()
-    query = request.data.get('query')
-    search_type = request.data.get('type', 'auto')
+    current_username = request.GET.get('username')
     
-    if not query:
-        response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/osint/', 400, response_time)
-        return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if not OSINT_AVAILABLE:
-        return Response({
-            'error': 'OSINT engine not available',
-            'message': 'Please install required packages: pip install requests beautifulsoup4 dnspython'
-        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    if not current_username:
+        return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        print(f"🔍 OSINT lookup: {query} (type: {search_type})")
+        current_user = User.objects.get(username=current_username)
         
-        # Perform OSINT search
-        results = osint_search(query, search_type)
+        # Get all users except current user
+        users = User.objects.exclude(id=current_user.id).select_related('profile')
+        
+        users_list = []
+        for user in users:
+            profile = getattr(user, 'profile', None)
+            users_list.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'status': profile.status if profile else 'Hey there! I am using White Beat',
+                'is_online': profile.is_active_session if profile else False,
+                'last_activity': profile.last_activity.isoformat() if profile else None
+            })
         
         response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/osint/', 200, response_time)
+        log_api_request(request, '/api/users/', 200, response_time)
         
         return Response({
             'success': True,
-            'query': query,
-            'type': search_type,
-            'results': results,
-            'response_time': f"{response_time:.0f}ms"
+            'users': users_list,
+            'count': len(users_list)
         })
         
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ OSINT Error: {error_msg}")
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_conversations(request):
+    """Get all conversations for a user"""
+    start_time = time.time()
+    username = request.GET.get('username')
+    
+    if not username:
+        return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(username=username)
+        
+        # Get all conversations where user is participant
+        conversations = Conversation.objects.filter(
+            Q(user1=user) | Q(user2=user)
+        ).select_related('user1', 'user2').prefetch_related('messages')
+        
+        conversations_list = []
+        for conv in conversations:
+            other_user = conv.get_other_user(user)
+            other_profile = getattr(other_user, 'profile', None)
+            
+            # Get last message
+            last_message = conv.messages.last()
+            
+            # Count unread messages
+            unread_count = conv.messages.filter(
+                receiver=user,
+                is_read=False
+            ).count()
+            
+            conversations_list.append({
+                'id': conv.id,
+                'other_user': {
+                    'id': other_user.id,
+                    'username': other_user.username,
+                    'email': other_user.email,
+                    'status': other_profile.status if other_profile else '',
+                    'is_online': other_profile.is_active_session if other_profile else False
+                },
+                'last_message': {
+                    'content': last_message.content if last_message else '',
+                    'created_at': last_message.created_at.isoformat() if last_message else None,
+                    'sender': last_message.sender.username if last_message else None
+                } if last_message else None,
+                'unread_count': unread_count,
+                'updated_at': conv.updated_at.isoformat()
+            })
         
         response_time = (time.time() - start_time) * 1000
-        log_api_request(request, '/api/osint/', 500, response_time)
+        log_api_request(request, '/api/conversations/', 200, response_time)
         
         return Response({
-            'error': error_msg,
-            'query': query
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            'success': True,
+            'conversations': conversations_list,
+            'count': len(conversations_list)
+        })
+        
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_messages(request):
+    """Get all messages in a conversation"""
+    start_time = time.time()
+    username = request.GET.get('username')
+    other_username = request.GET.get('other_username')
+    
+    if not username or not other_username:
+        return Response(
+            {'error': 'Both username and other_username required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        user = User.objects.get(username=username)
+        other_user = User.objects.get(username=other_username)
+        
+        # Get or create conversation
+        conversation = get_or_create_conversation(user, other_user)
+        
+        # Get all messages
+        messages = conversation.messages.select_related('sender', 'receiver')
+        
+        messages_list = []
+        for msg in messages:
+            messages_list.append({
+                'id': msg.id,
+                'sender': msg.sender.username,
+                'receiver': msg.receiver.username,
+                'content': msg.content,
+                'is_read': msg.is_read,
+                'created_at': msg.created_at.isoformat(),
+                'is_mine': msg.sender == user
+            })
+        
+        # Mark messages as read
+        conversation.messages.filter(receiver=user, is_read=False).update(is_read=True)
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/messages/', 200, response_time)
+        
+        return Response({
+            'success': True,
+            'conversation_id': conversation.id,
+            'messages': messages_list,
+            'count': len(messages_list)
+        })
+        
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def send_message(request):
+    """Send a message to another user"""
+    start_time = time.time()
+    sender_username = request.data.get('sender')
+    receiver_username = request.data.get('receiver')
+    content = request.data.get('content')
+    
+    if not all([sender_username, receiver_username, content]):
+        return Response(
+            {'error': 'sender, receiver, and content are required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        sender = User.objects.get(username=sender_username)
+        receiver = User.objects.get(username=receiver_username)
+        
+        # Get or create conversation
+        conversation = get_or_create_conversation(sender, receiver)
+        
+        # Create message
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=sender,
+            receiver=receiver,
+            content=content
+        )
+        
+        # Update sender profile
+        sender_profile, _ = UserProfile.objects.get_or_create(user=sender)
+        sender_profile.total_messages += 1
+        sender_profile.save()
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/send-message/', 201, response_time)
+        
+        return Response({
+            'success': True,
+            'message': {
+                'id': message.id,
+                'sender': sender.username,
+                'receiver': receiver.username,
+                'content': message.content,
+                'created_at': message.created_at.isoformat(),
+                'is_read': message.is_read
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def mark_as_read(request):
+    """Mark messages as read"""
+    start_time = time.time()
+    username = request.data.get('username')
+    conversation_id = request.data.get('conversation_id')
+    
+    if not username or not conversation_id:
+        return Response(
+            {'error': 'username and conversation_id required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        user = User.objects.get(username=username)
+        conversation = Conversation.objects.get(id=conversation_id)
+        
+        # Mark all messages from other user as read
+        updated = conversation.messages.filter(
+            receiver=user,
+            is_read=False
+        ).update(is_read=True)
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/mark-as-read/', 200, response_time)
+        
+        return Response({
+            'success': True,
+            'marked_read': updated
+        })
+        
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Conversation.DoesNotExist:
+        return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+
+# ============= ADMIN ENDPOINTS =============
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -529,7 +634,7 @@ def admin_stats(request):
         ).count()
         
         # Total messages
-        total_messages = ChatMessage.objects.count()
+        total_messages = Message.objects.count()
         
         # Revenue (mock calculation based on messages)
         revenue = total_messages * 0.002  # $0.002 per message
@@ -620,7 +725,7 @@ def admin_stats(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
-    """Health check with all engines status"""
+    """Health check endpoint"""
     start_time = time.time()
     
     # Check database
@@ -631,28 +736,6 @@ def health_check(request):
     except Exception as e:
         print(f"Database error: {e}")
     
-    # Check AI engine
-    ai_status = "unavailable"
-    if AI_AVAILABLE:
-        try:
-            engine = get_ai_engine()
-            if engine and engine.initialized:
-                ai_status = "initialized"
-            else:
-                ai_status = "not initialized"
-        except:
-            ai_status = "error"
-    
-    # Check OSINT engine
-    osint_status = "unavailable"
-    if OSINT_AVAILABLE:
-        try:
-            engine = get_osint_engine()
-            if engine:
-                osint_status = "available"
-        except:
-            osint_status = "error"
-    
     # Check Admin group
     admin_group_exists = Group.objects.filter(name='Admin').exists()
     
@@ -661,20 +744,18 @@ def health_check(request):
     
     return Response({
         'status': 'healthy',
-        'service': 'White Beat Backend',
+        'service': 'White Beat Backend - User Chat',
         'database_connected': db_connected,
-        'ai_engine': ai_status,
-        'osint_engine': osint_status,
         'admin_group_exists': admin_group_exists,
         'features': {
-            'local_ai': AI_AVAILABLE,
-            'osint': OSINT_AVAILABLE,
+            'user_to_user_chat': True,
             'group_based_admin': True,
             'signup': True
         },
         'stats': {
             'total_users': User.objects.count() if db_connected else 0,
-            'total_messages': ChatMessage.objects.count() if db_connected else 0,
+            'total_messages': Message.objects.count() if db_connected else 0,
+            'total_conversations': Conversation.objects.count() if db_connected else 0,
             'admin_users': User.objects.filter(groups__name='Admin').count() if db_connected else 0
         }
     })
