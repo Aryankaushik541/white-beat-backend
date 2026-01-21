@@ -7,6 +7,7 @@ urlpatterns = [
     path('login/', views.login, name='login'),
     path('verify-admin/', views.verify_admin, name='verify-admin'),
     path('make-admin/', views.make_admin, name='make-admin'),
+    path('remove-admin/', views.remove_admin, name='remove-admin'),
     
     # Chat
     path('chat/', views.chat, name='chat'),
