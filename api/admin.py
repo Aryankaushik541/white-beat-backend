@@ -1,14 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import UserProfile, ChatMessage, APILog, SystemStats
+from .models import UserProfile, Conversation, Message, APILog, SystemStats
 
 # Customize User Admin - Simplified for business use
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
     verbose_name_plural = 'Profile'
-    fields = ('role', 'is_active_session', 'total_messages', 'joined_date', 'last_activity')
+    fields = ('role', 'is_active_session', 'total_messages', 'status', 'joined_date', 'last_activity')
     readonly_fields = ('joined_date', 'last_activity', 'total_messages')
 
 class CustomUserAdmin(BaseUserAdmin):
@@ -94,45 +94,57 @@ class CustomUserAdmin(BaseUserAdmin):
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
 
-# Chat Message Admin - Full access
-@admin.register(ChatMessage)
-class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ('user', 'short_prompt', 'short_response', 'model_used', 'tokens_used', 'response_time', 'created_at')
-    list_filter = ('model_used', 'created_at', 'user')
-    search_fields = ('user__username', 'prompt', 'response')
+# Conversation Admin
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user1', 'user2', 'get_message_count', 'created_at', 'updated_at')
+    list_filter = ('created_at', 'updated_at')
+    search_fields = ('user1__username', 'user2__username')
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'created_at'
+    ordering = ('-updated_at',)
+    
+    def get_message_count(self, obj):
+        return obj.messages.count()
+    get_message_count.short_description = 'Messages'
+    
+    fieldsets = (
+        ('Participants', {
+            'fields': ('user1', 'user2')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
+# Message Admin
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = ('id', 'sender', 'receiver', 'short_content', 'is_read', 'created_at')
+    list_filter = ('is_read', 'created_at', 'sender', 'receiver')
+    search_fields = ('sender__username', 'receiver__username', 'content')
     readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
     
-    def short_prompt(self, obj):
-        return obj.prompt[:50] + '...' if len(obj.prompt) > 50 else obj.prompt
-    short_prompt.short_description = 'Prompt'
-    
-    def short_response(self, obj):
-        return obj.response[:50] + '...' if len(obj.response) > 50 else obj.response
-    short_response.short_description = 'Response'
+    def short_content(self, obj):
+        return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
+    short_content.short_description = 'Content'
     
     fieldsets = (
-        ('User', {
-            'fields': ('user',)
+        ('Conversation', {
+            'fields': ('conversation',)
+        }),
+        ('Participants', {
+            'fields': ('sender', 'receiver')
         }),
         ('Message', {
-            'fields': ('prompt', 'response')
+            'fields': ('content', 'is_read')
         }),
-        ('Metadata', {
-            'fields': ('model_used', 'tokens_used', 'response_time', 'created_at')
+        ('Timestamp', {
+            'fields': ('created_at',)
         }),
     )
-    
-    # Full access
-    def has_add_permission(self, request):
-        return True
-    
-    def has_change_permission(self, request, obj=None):
-        return True
-    
-    def has_delete_permission(self, request, obj=None):
-        return True
 
 # API Log Admin - Full access
 @admin.register(APILog)
@@ -227,4 +239,4 @@ admin.site.register(Group, CustomGroupAdmin)
 # Customize admin site
 admin.site.site_header = 'White Beat Admin Dashboard'
 admin.site.site_title = 'White Beat Admin'
-admin.site.index_title = 'Business Administration Panel'
+admin.site.index_title = 'User Chat Administration Panel'
