@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import views_dashboard
 
 urlpatterns = [
     # ============= AUTHENTICATION =============
@@ -47,6 +48,15 @@ urlpatterns = [
     
     # ============= ADMIN =============
     path('admin/stats/', views.admin_stats, name='admin-stats'),
+    
+    # ============= DASHBOARD ANALYTICS =============
+    path('admin/api-logs/', views_dashboard.get_api_logs, name='get-api-logs'),
+    path('admin/system-stats/', views_dashboard.get_system_stats, name='get-system-stats'),
+    path('admin/update-stats/', views_dashboard.update_system_stats, name='update-system-stats'),
+    path('analytics/', views_dashboard.get_user_analytics, name='get-user-analytics'),
+    path('message-reactions/', views_dashboard.get_message_reactions, name='get-message-reactions'),
+    path('status-views/', views_dashboard.get_status_views, name='get-status-views'),
+    path('conversation-details/', views_dashboard.get_conversation_details, name='get-conversation-details'),
     
     # ============= HEALTH =============
     path('health/', views.health_check, name='health'),
