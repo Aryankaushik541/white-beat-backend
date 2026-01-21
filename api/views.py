@@ -3,9 +3,19 @@ from rest_framework.response import Response
 from rest_framework import status
 from openai import OpenAI
 from django.conf import settings
+import random
 
 # Initialize OpenAI client
 client = OpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
+
+# Demo responses for testing without OpenAI
+DEMO_RESPONSES = [
+    "Hello! I'm a demo AI assistant. To enable real AI responses, please add your OpenAI API key to the .env file.",
+    "That's an interesting question! This is a simulated response. For actual AI-powered answers, configure your OpenAI API key.",
+    "I understand what you're asking. Currently running in demo mode. Add OPENAI_API_KEY to unlock full AI capabilities!",
+    "Great question! I'm here to help. Note: This is a demo response. Real AI responses require OpenAI API configuration.",
+    "Thanks for your message! I'm operating in demo mode right now. Set up your OpenAI API key for intelligent responses."
+]
 
 @api_view(['POST'])
 def login(request):
@@ -42,6 +52,7 @@ def login(request):
 def chat(request):
     """
     Handle AI chat requests using OpenAI API
+    Falls back to demo responses if API key not configured
     """
     prompt = request.data.get('prompt')
     
@@ -53,8 +64,12 @@ def chat(request):
     
     # Check if OpenAI is configured
     if not client:
+        # Return intelligent demo response
+        demo_response = random.choice(DEMO_RESPONSES)
         return Response({
-            'response': f'OpenAI API not configured. Your message: "{prompt}". Please add OPENAI_API_KEY to .env file.'
+            'response': f"{demo_response}\n\nYour message was: \"{prompt}\"",
+            'model': 'demo-mode',
+            'demo': True
         })
     
     try:
@@ -71,7 +86,8 @@ def chat(request):
         
         return Response({
             'response': response.choices[0].message.content,
-            'model': 'gpt-3.5-turbo'
+            'model': 'gpt-3.5-turbo',
+            'demo': False
         })
         
     except Exception as e:
@@ -104,5 +120,6 @@ def health_check(request):
     return Response({
         'status': 'healthy',
         'service': 'White Beat Backend',
-        'openai_configured': bool(client)
+        'openai_configured': bool(client),
+        'mode': 'production' if client else 'demo'
     })
