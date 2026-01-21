@@ -1,14 +1,15 @@
-# 💬 White Beat Backend - User Chat System
+# 💬 White Beat Backend - Full Featured Chat Platform
 
 <div align="center">
 
 ![Django](https://img.shields.io/badge/Django-4.2-092e20?style=for-the-badge&logo=django)
 ![REST API](https://img.shields.io/badge/REST-API-009688?style=for-the-badge)
+![WhatsApp](https://img.shields.io/badge/WhatsApp-Like-25D366?style=for-the-badge&logo=whatsapp)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**Django REST API for User-to-User Messaging (WhatsApp-like)**
+**Django REST API for Full-Featured Messaging Platform (WhatsApp + Telegram Features)**
 
-[Frontend Repo](https://github.com/Aryankaushik541/white-beat-frontend) • [API Docs](#-api-endpoints) • [Deploy Guide](#-deployment)
+[Frontend Repo](https://github.com/Aryankaushik541/white-beat-frontend) • [API Docs](API_DOCUMENTATION.md) • [Migration Guide](MIGRATION_GUIDE.md)
 
 </div>
 
@@ -16,14 +17,56 @@
 
 ## ✨ Features
 
-- 🔐 **Authentication API** - Smart login with admin/user role detection
-- 💬 **User-to-User Chat** - WhatsApp-like messaging system
-- 👥 **User Management** - List users, view profiles, online status
-- 📊 **Admin Analytics** - Dashboard statistics API
-- 🔒 **CORS Enabled** - Ready for React frontend
-- 🚀 **RESTful Design** - Clean, documented endpoints
-- ✅ **Health Check** - Service monitoring endpoint
-- 🧪 **Unit Tests** - Comprehensive test coverage
+### 💬 Messaging
+- ✅ **User-to-User Chat** - Direct messaging between users
+- ✅ **Group Chat** - Create and manage group conversations
+- ✅ **Media Messages** - Send images, videos, audio, documents
+- ✅ **Message Reactions** - React with emojis (👍 ❤️ 😂 😮 😢 😠)
+- ✅ **Reply to Messages** - Quote and reply to specific messages
+- ✅ **Edit Messages** - Edit sent messages
+- ✅ **Delete Messages** - Delete for self or everyone
+- ✅ **Forward Messages** - Forward messages to other chats
+- ✅ **Read Receipts** - Track message read status
+- ✅ **Typing Indicators** - See when someone is typing
+
+### 📞 Calls
+- ✅ **Voice Calls** - One-on-one audio calls
+- ✅ **Video Calls** - One-on-one video calls
+- ✅ **Group Calls** - Audio/video calls in groups
+- ✅ **Call History** - Track all calls with duration
+- ✅ **Call Status** - Missed, rejected, completed tracking
+
+### 📸 Status Updates
+- ✅ **24-Hour Stories** - WhatsApp-like status updates
+- ✅ **Text Status** - Text with custom backgrounds
+- ✅ **Image Status** - Share photos as status
+- ✅ **Video Status** - Share videos as status
+- ✅ **View Tracking** - See who viewed your status
+- ✅ **Privacy Controls** - Control who sees your status
+
+### 👥 User Features
+- ✅ **User Profiles** - Avatar, bio, status message
+- ✅ **Online Status** - Real-time online/offline tracking
+- ✅ **Last Seen** - Track when users were last active
+- ✅ **Privacy Settings** - Control profile visibility
+- ✅ **Contact Management** - Add/manage contacts
+- ✅ **Block Users** - Block unwanted users
+- ✅ **Favorite Contacts** - Mark favorite contacts
+
+### 🎯 Group Features
+- ✅ **Create Groups** - Create group chats
+- ✅ **Group Admin** - Multiple admins per group
+- ✅ **Add/Remove Members** - Manage group members
+- ✅ **Group Settings** - Control who can send messages
+- ✅ **Group Info** - Name, description, avatar
+- ✅ **Member Permissions** - Admin-only messaging option
+
+### 🔐 Security & Admin
+- ✅ **User Authentication** - Secure login/signup
+- ✅ **Role-Based Access** - Admin and user roles
+- ✅ **Admin Dashboard** - Comprehensive statistics
+- ✅ **API Logging** - Track all API requests
+- ✅ **Privacy Controls** - Granular privacy settings
 
 ---
 
@@ -62,335 +105,191 @@ Visit **http://localhost:8000/api/health/** to verify installation
 
 ---
 
-## 📡 API Endpoints
+## 📡 API Endpoints Overview
 
 ### Authentication
-
-#### Signup
-```http
-POST /api/signup/
-Content-Type: application/json
-
-{
-  "username": "john",
-  "password": "password123",
-  "email": "john@example.com"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "role": "user",
-  "username": "john",
-  "email": "john@example.com",
-  "user_id": 1,
-  "message": "Account created successfully! You can now login."
-}
-```
-
-#### Login
-```http
-POST /api/login/
-Content-Type: application/json
-
-{
-  "username": "john",
-  "password": "password123"
-}
-```
-
-**Response:**
-```json
-{
-  "role": "user",
-  "username": "john",
-  "email": "john@example.com",
-  "message": "User login successful",
-  "user_id": 1,
-  "is_admin_group": false
-}
-```
-
----
+- `POST /api/signup/` - Create account
+- `POST /api/login/` - User login
+- `POST /api/logout/` - User logout
 
 ### User Management
-
-#### Get All Users
-```http
-GET /api/users/?username=john
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "users": [
-    {
-      "id": 2,
-      "username": "jane",
-      "email": "jane@example.com",
-      "status": "Hey there! I am using White Beat",
-      "is_online": true,
-      "last_activity": "2026-01-21T22:30:00Z"
-    }
-  ],
-  "count": 1
-}
-```
-
----
+- `GET /api/users/` - List all users
+- `GET /api/user-profile/` - Get user profile
+- `POST /api/update-profile/` - Update profile
 
 ### Messaging
+- `GET /api/conversations/` - Get conversations
+- `GET /api/messages/` - Get messages
+- `POST /api/send-message/` - Send message
+- `POST /api/delete-message/` - Delete message
+- `POST /api/edit-message/` - Edit message
+- `POST /api/react-message/` - React to message
+- `POST /api/mark-as-read/` - Mark as read
 
-#### Get Conversations
-```http
-GET /api/conversations/?username=john
-```
+### Groups
+- `POST /api/create-group/` - Create group
+- `GET /api/groups/` - Get user's groups
+- `GET /api/group-messages/` - Get group messages
+- `POST /api/add-group-member/` - Add member
+- `POST /api/remove-group-member/` - Remove member
 
-**Response:**
-```json
-{
-  "success": true,
-  "conversations": [
-    {
-      "id": 1,
-      "other_user": {
-        "id": 2,
-        "username": "jane",
-        "email": "jane@example.com",
-        "status": "Available",
-        "is_online": true
-      },
-      "last_message": {
-        "content": "Hey, how are you?",
-        "created_at": "2026-01-21T22:30:00Z",
-        "sender": "jane"
-      },
-      "unread_count": 2,
-      "updated_at": "2026-01-21T22:30:00Z"
-    }
-  ],
-  "count": 1
-}
-```
+### Calls
+- `POST /api/initiate-call/` - Start call
+- `POST /api/update-call-status/` - Update call
+- `GET /api/call-history/` - Get call history
 
-#### Get Messages
-```http
-GET /api/messages/?username=john&other_username=jane
-```
+### Status
+- `POST /api/create-status/` - Create status
+- `GET /api/statuses/` - Get statuses
+- `POST /api/view-status/` - View status
 
-**Response:**
-```json
-{
-  "success": true,
-  "conversation_id": 1,
-  "messages": [
-    {
-      "id": 1,
-      "sender": "john",
-      "receiver": "jane",
-      "content": "Hello!",
-      "is_read": true,
-      "created_at": "2026-01-21T22:25:00Z",
-      "is_mine": true
-    },
-    {
-      "id": 2,
-      "sender": "jane",
-      "receiver": "john",
-      "content": "Hey, how are you?",
-      "is_read": false,
-      "created_at": "2026-01-21T22:30:00Z",
-      "is_mine": false
-    }
-  ],
-  "count": 2
-}
-```
+### Contacts
+- `POST /api/add-contact/` - Add contact
+- `GET /api/contacts/` - Get contacts
 
-#### Send Message
-```http
-POST /api/send-message/
-Content-Type: application/json
+### Admin
+- `GET /api/admin/stats/` - Dashboard stats
+- `POST /api/make-admin/` - Make user admin
+- `POST /api/remove-admin/` - Remove admin
 
-{
-  "sender": "john",
-  "receiver": "jane",
-  "content": "I'm doing great, thanks!"
-}
-```
+### Health
+- `GET /api/health/` - Service health check
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": {
-    "id": 3,
-    "sender": "john",
-    "receiver": "jane",
-    "content": "I'm doing great, thanks!",
-    "created_at": "2026-01-21T22:35:00Z",
-    "is_read": false
-  }
-}
-```
-
-#### Mark as Read
-```http
-POST /api/mark-as-read/
-Content-Type: application/json
-
-{
-  "username": "john",
-  "conversation_id": 1
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "marked_read": 2
-}
-```
+**Full API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
 ---
 
-### Admin Endpoints
+## 📊 Database Models
 
-#### Get Statistics
-```http
-GET /api/admin/stats/
-```
+### Core Models
 
-**Response:**
-```json
-{
-  "total_users": 150,
-  "api_calls_today": 1234,
-  "active_sessions": 45,
-  "total_messages": 5678,
-  "revenue": 11.36,
-  "user_growth": [10, 15, 20, 18, 25, 30],
-  "api_usage": [80, 65, 90, 75, 85, 70],
-  "recent_users": [...],
-  "recent_logs": [...]
-}
-```
+#### UserProfile
+Extended user information with privacy settings
+- Avatar, status message, bio
+- Online status, last seen
+- Privacy controls
+- Message count tracking
 
-#### Make Admin
-```http
-POST /api/make-admin/
-Content-Type: application/json
-
-{
-  "admin_username": "admin",
-  "admin_password": "admin123",
-  "target_username": "john"
-}
-```
-
-#### Remove Admin
-```http
-POST /api/remove-admin/
-Content-Type: application/json
-
-{
-  "admin_username": "admin",
-  "admin_password": "admin123",
-  "target_username": "john"
-}
-```
-
----
-
-### Health Check
-
-#### Check Service Status
-```http
-GET /api/health/
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "service": "White Beat Backend - User Chat",
-  "database_connected": true,
-  "admin_group_exists": true,
-  "features": {
-    "user_to_user_chat": true,
-    "group_based_admin": true,
-    "signup": true
-  },
-  "stats": {
-    "total_users": 150,
-    "total_messages": 5678,
-    "total_conversations": 89,
-    "admin_users": 3
-  }
-}
-```
-
----
-
-## 📁 Project Structure
-
-```
-white-beat-backend/
-├── whitebeat_backend/
-│   ├── __init__.py
-│   ├── settings.py          # Django settings with CORS
-│   ├── urls.py              # Main URL configuration
-│   ├── wsgi.py              # WSGI config
-│   └── asgi.py              # ASGI config
-├── api/
-│   ├── __init__.py
-│   ├── views.py             # API endpoints
-│   ├── urls.py              # API routes
-│   ├── models.py            # Database models (User, Conversation, Message)
-│   ├── admin.py             # Django admin config
-│   └── tests.py             # Unit tests
-├── manage.py
-├── requirements.txt
-├── Procfile                 # Heroku deployment
-├── runtime.txt              # Python version
-├── .gitignore
-└── README.md
-```
-
----
-
-## 🗄️ Database Models
-
-### UserProfile
-- Extended user information
-- Online status tracking
-- Message count
-- Custom status message
-
-### Conversation
+#### Conversation
+One-on-one chat conversations
 - Links two users
-- Tracks last update time
-- Ensures unique user pairs
+- Archive and mute options
+- Last update tracking
 
-### Message
-- Individual chat messages
+#### Message
+Individual chat messages
+- Text, image, video, audio, document, etc.
 - Read/unread status
-- Sender and receiver tracking
-- Timestamp
+- Reply, forward, edit support
+- Reaction support
 
-### APILog
-- Request logging
-- Performance monitoring
-- User activity tracking
+#### MessageReaction
+Emoji reactions to messages
+- 6 reaction types (like, love, laugh, wow, sad, angry)
+- One reaction per user per message
 
-### SystemStats
-- Daily statistics
-- User growth metrics
+### Group Models
+
+#### Group
+Group chat management
+- Name, description, avatar
+- Admin management
+- Member management
+- Group settings
+
+#### GroupMembership
+Track group members and roles
+- Member join date
+- Admin status
+
+### Communication Models
+
+#### Call
+Voice and video calls
+- One-on-one and group calls
+- Call duration tracking
+- Call status (initiated, ongoing, completed, etc.)
+- WebRTC room ID
+
+#### Status
+24-hour status updates
+- Text, image, video types
+- Privacy controls
+- View tracking
+- Auto-expiry after 24 hours
+
+#### StatusView
+Track who viewed statuses
+- User and timestamp
+
+### Contact Models
+
+#### Contact
+User contact management
+- Nickname support
+- Block/favorite options
+- Add date tracking
+
+### System Models
+
+#### APILog
+Request logging and monitoring
+- Endpoint, method, status
+- Response time tracking
+- User and IP tracking
+
+#### SystemStats
+Daily system statistics
+- User counts
+- Message, group, call counts
 - Revenue tracking
+
+---
+
+## 🗄️ Message Types
+
+- **text** - Plain text message
+- **image** - Image file
+- **video** - Video file
+- **audio** - Voice message
+- **document** - PDF, DOC, etc.
+- **location** - GPS coordinates
+- **contact** - Contact card
+- **sticker** - Sticker/emoji
+- **gif** - Animated GIF
+
+---
+
+## 🎭 Reaction Types
+
+- **like** - 👍
+- **love** - ❤️
+- **laugh** - 😂
+- **wow** - 😮
+- **sad** - 😢
+- **angry** - 😠
+
+---
+
+## 📞 Call Status
+
+- **initiated** - Call started
+- **ringing** - Ringing
+- **ongoing** - In progress
+- **completed** - Ended normally
+- **missed** - Not answered
+- **rejected** - Declined
+- **failed** - Error occurred
+
+---
+
+## 🔒 Privacy Settings
+
+- **everyone** - Visible to all
+- **contacts** - Contacts only
+- **selected** - Selected users
+- **except** - All except selected
+- **nobody** - Hidden from all
 
 ---
 
@@ -402,6 +301,31 @@ white-beat-backend/
 - **SQLite** - Development database
 - **PostgreSQL** - Production database (optional)
 - **Gunicorn** - Production WSGI server
+
+---
+
+## 📁 Project Structure
+
+```
+white-beat-backend/
+├── whitebeat_backend/
+│   ├── settings.py          # Django settings
+│   ├── urls.py              # Main URL config
+│   ├── wsgi.py              # WSGI config
+│   └── asgi.py              # ASGI config
+├── api/
+│   ├── models.py            # Database models
+│   ├── views.py             # API endpoints
+│   ├── urls.py              # API routes
+│   ├── admin.py             # Django admin
+│   └── tests.py             # Unit tests
+├── manage.py
+├── requirements.txt
+├── README.md
+├── API_DOCUMENTATION.md     # Full API docs
+├── MIGRATION_GUIDE.md       # Migration guide
+└── CHANGELOG.md             # Version history
+```
 
 ---
 
@@ -454,6 +378,75 @@ heroku config:set ALLOWED_HOSTS=your-app-name.herokuapp.com
 
 ---
 
+## 📝 Example Usage
+
+### JavaScript/Fetch
+```javascript
+// Login
+const login = await fetch('http://localhost:8000/api/login/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'john', password: 'pass123' })
+});
+
+// Send message
+const msg = await fetch('http://localhost:8000/api/send-message/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    sender: 'john',
+    receiver: 'jane',
+    content: 'Hello!',
+    message_type: 'text'
+  })
+});
+
+// Create group
+const group = await fetch('http://localhost:8000/api/create-group/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creator: 'john',
+    name: 'Team Chat',
+    members: ['jane', 'bob']
+  })
+});
+```
+
+### Python/Requests
+```python
+import requests
+
+# Signup
+response = requests.post('http://localhost:8000/api/signup/', 
+    json={'username': 'john', 'password': 'pass123', 'email': 'john@example.com'})
+
+# Get conversations
+conversations = requests.get('http://localhost:8000/api/conversations/',
+    params={'username': 'john'})
+
+# Initiate call
+call = requests.post('http://localhost:8000/api/initiate-call/',
+    json={'caller': 'john', 'receiver': 'jane', 'call_type': 'video'})
+```
+
+---
+
+## 🎯 Roadmap
+
+- [ ] WebSocket support for real-time messaging
+- [ ] End-to-end encryption
+- [ ] Voice message transcription
+- [ ] Message search functionality
+- [ ] File upload to cloud storage
+- [ ] Push notifications
+- [ ] Multi-device sync
+- [ ] Backup and restore
+- [ ] Broadcast messages
+- [ ] Scheduled messages
+
+---
+
 ## 📝 License
 
 MIT License - see LICENSE file for details
@@ -480,8 +473,19 @@ Contributions, issues, and feature requests are welcome!
 
 ---
 
+## 📞 Support
+
+For issues or questions:
+- GitHub Issues: [Create an issue](https://github.com/Aryankaushik541/white-beat-backend/issues)
+- Documentation: [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+- Migration Guide: [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
+
+---
+
 <div align="center">
 
 **Made with ❤️ using Django**
+
+⭐ Star this repo if you find it helpful!
 
 </div>
