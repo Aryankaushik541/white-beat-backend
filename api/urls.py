@@ -9,11 +9,12 @@ urlpatterns = [
     path('make-admin/', views.make_admin, name='make-admin'),
     path('remove-admin/', views.remove_admin, name='remove-admin'),
     
-    # Chat
-    path('chat/', views.chat, name='chat'),
-    
-    # OSINT
-    path('osint/', views.osint_lookup, name='osint'),
+    # User-to-User Messaging
+    path('users/', views.get_users, name='get-users'),
+    path('conversations/', views.get_conversations, name='get-conversations'),
+    path('messages/', views.get_messages, name='get-messages'),
+    path('send-message/', views.send_message, name='send-message'),
+    path('mark-as-read/', views.mark_as_read, name='mark-as-read'),
     
     # Admin
     path('admin/stats/', views.admin_stats, name='admin-stats'),
