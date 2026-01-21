@@ -13,31 +13,20 @@ import time
 
 from .models import UserProfile, ChatMessage, APILog, SystemStats
 
-# Demo responses for testing without OpenAI
-DEMO_RESPONSES = [
-    "Hello! I'm a demo AI assistant. To enable real AI responses, please add your OpenAI API key to the .env file.",
-    "That's an interesting question! This is a simulated response. For actual AI-powered answers, configure your OpenAI API key.",
-    "I understand what you're asking. Currently running in demo mode. Add OPENAI_API_KEY to unlock full AI capabilities!",
-]
-
-# Initialize OpenAI client
-client = None
-openai_error = None
+# Import local AI and OSINT engines
+try:
+    from .ai_engine import chat_with_ai, get_ai_engine
+    AI_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ AI Engine not available: {e}")
+    AI_AVAILABLE = False
 
 try:
-    from openai import OpenAI
-    from django.conf import settings
-    
-    api_key = getattr(settings, 'OPENAI_API_KEY', None)
-    
-    if api_key and api_key.startswith('sk-'):
-        client = OpenAI(api_key=api_key)
-        print(f"✅ OpenAI initialized: {api_key[:15]}...")
-    else:
-        print(f"⚠️ Invalid API key format: {api_key[:15] if api_key else 'None'}")
+    from .osint_engine import osint_search, get_osint_engine
+    OSINT_AVAILABLE = True
 except Exception as e:
-    openai_error = str(e)
-    print(f"❌ OpenAI init error: {e}")
+    print(f"⚠️ OSINT Engine not available: {e}")
+    OSINT_AVAILABLE = False
 
 def log_api_request(request, endpoint, status_code, response_time):
     """Helper function to log API requests"""
@@ -123,7 +112,6 @@ def login(request):
             })
     else:
         # Invalid credentials - create regular user for demo
-        # Check if user exists
         try:
             existing_user = User.objects.get(username=username)
             # User exists but wrong password
@@ -189,8 +177,63 @@ def verify_admin(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def make_admin(request):
+    """
+    Make a user admin (staff)
+    Only superusers can do this
+    """
+    start_time = time.time()
+    admin_username = request.data.get('admin_username')
+    target_username = request.data.get('target_username')
+    admin_password = request.data.get('admin_password')
+    
+    if not all([admin_username, target_username, admin_password]):
+        return Response(
+            {'error': 'admin_username, target_username, and admin_password required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Authenticate admin
+    admin_user = authenticate(username=admin_username, password=admin_password)
+    
+    if not admin_user or not admin_user.is_superuser:
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/make-admin/', 403, response_time)
+        return Response(
+            {'error': 'Only superusers can make other users admin'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        target_user = User.objects.get(username=target_username)
+        target_user.is_staff = True
+        target_user.save()
+        
+        # Update profile
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.role = 'admin'
+        profile.save()
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/make-admin/', 200, response_time)
+        
+        return Response({
+            'success': True,
+            'message': f'{target_username} is now an admin',
+            'username': target_username,
+            'is_staff': True
+        })
+        
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'Target user not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def chat(request):
-    """Handle AI chat with message logging"""
+    """Handle AI chat with local AI engine"""
     start_time = time.time()
     prompt = request.data.get('prompt')
     username = request.data.get('username', 'anonymous')
@@ -206,58 +249,45 @@ def chat(request):
         defaults={'email': f'{username}@whitebeat.com'}
     )
     
-    # If no OpenAI client, return demo response
-    if not client:
-        demo_response = random.choice(DEMO_RESPONSES)
-        response_text = f"{demo_response}\n\nYour message was: \"{prompt}\""
+    # Check if AI engine is available
+    if not AI_AVAILABLE:
+        demo_response = "Local AI engine not initialized. Please install required packages: pip install transformers torch"
         
-        # Log message
         ChatMessage.objects.create(
             user=user,
             prompt=prompt,
-            response=response_text,
-            model_used='demo-mode',
+            response=demo_response,
+            model_used='unavailable',
             tokens_used=0,
             response_time=(time.time() - start_time)
         )
         
-        # Update user profile
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.total_messages += 1
-        profile.save()
-        
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/chat/', 200, response_time)
         
         return Response({
-            'response': response_text,
-            'model': 'demo-mode',
+            'response': demo_response,
+            'model': 'unavailable',
             'demo': True
         })
     
     try:
-        print(f"🔄 Calling OpenAI with: {prompt[:50]}...")
+        print(f"🔄 Processing chat with local AI: {prompt[:50]}...")
         
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful AI assistant for White Beat platform."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500,
-            temperature=0.7
-        )
+        # Get AI response
+        ai_response = chat_with_ai(prompt)
         
-        response_text = response.choices[0].message.content
-        tokens = response.usage.total_tokens if hasattr(response, 'usage') else 0
+        # Get model info
+        engine = get_ai_engine()
+        model_name = getattr(engine, 'model_name', 'local-ai')
         
         # Log message
         ChatMessage.objects.create(
             user=user,
             prompt=prompt,
-            response=response_text,
-            model_used='gpt-3.5-turbo',
-            tokens_used=tokens,
+            response=ai_response,
+            model_used=model_name,
+            tokens_used=len(prompt.split()) + len(ai_response.split()),  # Approximate
             response_time=(time.time() - start_time)
         )
         
@@ -266,30 +296,78 @@ def chat(request):
         profile.total_messages += 1
         profile.save()
         
-        print(f"✅ OpenAI response received")
+        print(f"✅ Local AI response generated")
         
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/chat/', 200, response_time)
         
         return Response({
-            'response': response_text,
-            'model': 'gpt-3.5-turbo',
+            'response': ai_response,
+            'model': model_name,
             'demo': False,
-            'tokens': tokens
+            'engine': 'local-ai'
         })
         
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ OpenAI Error: {error_msg}")
+        print(f"❌ AI Error: {error_msg}")
         
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/chat/', 500, response_time)
         
         return Response({
-            'response': f"Error: {error_msg}\n\nYour message: \"{prompt}\"",
+            'response': f"Error: {error_msg}",
             'error': error_msg,
             'model': 'error-mode'
         })
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def osint_lookup(request):
+    """OSINT intelligence gathering endpoint"""
+    start_time = time.time()
+    query = request.data.get('query')
+    search_type = request.data.get('type', 'auto')
+    
+    if not query:
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/osint/', 400, response_time)
+        return Response({'error': 'Query is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not OSINT_AVAILABLE:
+        return Response({
+            'error': 'OSINT engine not available',
+            'message': 'Please install required packages: pip install requests beautifulsoup4 dnspython'
+        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    
+    try:
+        print(f"🔍 OSINT lookup: {query} (type: {search_type})")
+        
+        # Perform OSINT search
+        results = osint_search(query, search_type)
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/osint/', 200, response_time)
+        
+        return Response({
+            'success': True,
+            'query': query,
+            'type': search_type,
+            'results': results,
+            'response_time': f"{response_time:.0f}ms"
+        })
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ OSINT Error: {error_msg}")
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/osint/', 500, response_time)
+        
+        return Response({
+            'error': error_msg,
+            'query': query
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -391,7 +469,6 @@ def admin_stats(request):
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/admin/stats/', 500, response_time)
         
-        # Return mock data if error
         return Response({
             'total_users': 0,
             'api_calls_today': 0,
@@ -408,11 +485,8 @@ def admin_stats(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
-    """Health check with database connectivity"""
+    """Health check with all engines status"""
     start_time = time.time()
-    
-    from django.conf import settings
-    api_key = getattr(settings, 'OPENAI_API_KEY', None)
     
     # Check database
     db_connected = False
@@ -422,21 +496,43 @@ def health_check(request):
     except Exception as e:
         print(f"Database error: {e}")
     
+    # Check AI engine
+    ai_status = "unavailable"
+    if AI_AVAILABLE:
+        try:
+            engine = get_ai_engine()
+            if engine and engine.initialized:
+                ai_status = "initialized"
+            else:
+                ai_status = "not initialized"
+        except:
+            ai_status = "error"
+    
+    # Check OSINT engine
+    osint_status = "unavailable"
+    if OSINT_AVAILABLE:
+        try:
+            engine = get_osint_engine()
+            if engine:
+                osint_status = "available"
+        except:
+            osint_status = "error"
+    
     response_time = (time.time() - start_time) * 1000
     log_api_request(request, '/api/health/', 200, response_time)
     
     return Response({
         'status': 'healthy',
         'service': 'White Beat Backend',
-        'openai_configured': bool(client),
         'database_connected': db_connected,
-        'mode': 'production' if client else 'demo',
-        'debug': {
-            'api_key_exists': bool(api_key),
-            'api_key_valid': api_key.startswith('sk-') if api_key else False,
-            'api_key_prefix': api_key[:15] if api_key else 'None',
-            'client_status': 'initialized' if client else 'not initialized',
-            'error': openai_error,
+        'ai_engine': ai_status,
+        'osint_engine': osint_status,
+        'features': {
+            'local_ai': AI_AVAILABLE,
+            'osint': OSINT_AVAILABLE,
+            'admin_control': True
+        },
+        'stats': {
             'total_users': User.objects.count() if db_connected else 0,
             'total_messages': ChatMessage.objects.count() if db_connected else 0
         }
