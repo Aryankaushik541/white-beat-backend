@@ -1,0 +1,1 @@
+web: gunicorn whitebeat_backend.wsgi --log-file -
