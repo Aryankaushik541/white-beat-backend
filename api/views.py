@@ -49,10 +49,87 @@ def log_api_request(request, endpoint, status_code, response_time):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def signup(request):
+    """
+    User signup - creates regular user account
+    Superusers created via Django command go to admin
+    Regular signups go to user dashboard
+    """
+    start_time = time.time()
+    username = request.data.get('username')
+    password = request.data.get('password')
+    email = request.data.get('email', f'{username}@whitebeat.com')
+    
+    if not username or not password:
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/signup/', 400, response_time)
+        return Response(
+            {'error': 'Username and password are required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if username already exists
+    if User.objects.filter(username=username).exists():
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/signup/', 400, response_time)
+        return Response(
+            {'error': 'Username already exists'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if email already exists
+    if User.objects.filter(email=email).exists():
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/signup/', 400, response_time)
+        return Response(
+            {'error': 'Email already exists'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Create new regular user (NOT admin)
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=email,
+            is_staff=False,  # Regular user
+            is_superuser=False  # Regular user
+        )
+        
+        # Create user profile
+        profile = UserProfile.objects.create(
+            user=user,
+            role='user',
+            is_active_session=True
+        )
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/signup/', 201, response_time)
+        
+        return Response({
+            'success': True,
+            'role': 'user',
+            'username': username,
+            'email': email,
+            'user_id': user.id,
+            'message': 'Account created successfully! You can now login.'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/signup/', 500, response_time)
+        return Response(
+            {'error': f'Failed to create account: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def login(request):
     """
     Handle user/admin login with Django authentication
-    Only Django staff/superuser can access admin dashboard
+    - Superusers (created via createsuperuser) → Admin Dashboard
+    - Regular users (created via signup) → User Dashboard
     """
     start_time = time.time()
     username = request.data.get('username')
@@ -70,8 +147,8 @@ def login(request):
     user = authenticate(username=username, password=password)
     
     if user is not None:
-        # Check if user is admin (staff or superuser)
-        if user.is_staff or user.is_superuser:
+        # Check if user is superuser (created via createsuperuser)
+        if user.is_superuser:
             # Get or create profile
             profile, _ = UserProfile.objects.get_or_create(
                 user=user,
@@ -87,13 +164,14 @@ def login(request):
             return Response({
                 'role': 'admin',
                 'username': username,
+                'email': user.email,
                 'message': 'Admin login successful',
                 'user_id': user.id,
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser
             })
         else:
-            # Regular user
+            # Regular user (created via signup)
             profile, _ = UserProfile.objects.get_or_create(
                 user=user,
                 defaults={'role': 'user'}
@@ -107,50 +185,24 @@ def login(request):
             return Response({
                 'role': 'user',
                 'username': username,
+                'email': user.email,
                 'message': 'User login successful',
                 'user_id': user.id
             })
     else:
-        # Invalid credentials - create regular user for demo
-        try:
-            existing_user = User.objects.get(username=username)
-            # User exists but wrong password
-            response_time = (time.time() - start_time) * 1000
-            log_api_request(request, '/api/login/', 401, response_time)
-            return Response(
-                {'error': 'Invalid credentials'}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        except User.DoesNotExist:
-            # Create new regular user
-            user = User.objects.create_user(
-                username=username,
-                password=password,
-                email=f'{username}@whitebeat.com'
-            )
-            
-            # Create profile
-            profile = UserProfile.objects.create(
-                user=user,
-                role='user',
-                is_active_session=True
-            )
-            
-            response_time = (time.time() - start_time) * 1000
-            log_api_request(request, '/api/login/', 200, response_time)
-            
-            return Response({
-                'role': 'user',
-                'username': username,
-                'message': 'User account created and logged in',
-                'user_id': user.id
-            })
+        # Invalid credentials
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/login/', 401, response_time)
+        return Response(
+            {'error': 'Invalid username or password'}, 
+            status=status.HTTP_401_UNAUTHORIZED
+        )
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_admin(request):
     """
-    Verify if user is admin (staff/superuser)
+    Verify if user is admin (superuser only)
     Used by frontend to check admin access
     """
     start_time = time.time()
@@ -161,7 +213,7 @@ def verify_admin(request):
     
     try:
         user = User.objects.get(username=username)
-        is_admin = user.is_staff or user.is_superuser
+        is_admin = user.is_superuser  # Only superusers are admins
         
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/verify-admin/', 200, response_time)
@@ -179,8 +231,8 @@ def verify_admin(request):
 @permission_classes([AllowAny])
 def make_admin(request):
     """
-    Make a user admin (staff)
-    Only superusers can do this
+    Make a user admin (superuser)
+    Only existing superusers can do this
     """
     start_time = time.time()
     admin_username = request.data.get('admin_username')
@@ -207,6 +259,7 @@ def make_admin(request):
     try:
         target_user = User.objects.get(username=target_username)
         target_user.is_staff = True
+        target_user.is_superuser = True
         target_user.save()
         
         # Update profile
@@ -221,7 +274,8 @@ def make_admin(request):
             'success': True,
             'message': f'{target_username} is now an admin',
             'username': target_username,
-            'is_staff': True
+            'is_staff': True,
+            'is_superuser': True
         })
         
     except User.DoesNotExist:
@@ -530,7 +584,8 @@ def health_check(request):
         'features': {
             'local_ai': AI_AVAILABLE,
             'osint': OSINT_AVAILABLE,
-            'admin_control': True
+            'admin_control': True,
+            'signup': True
         },
         'stats': {
             'total_users': User.objects.count() if db_connected else 0,
