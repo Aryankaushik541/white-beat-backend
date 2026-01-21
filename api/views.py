@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.contrib.auth import authenticate
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
@@ -47,13 +47,17 @@ def log_api_request(request, endpoint, status_code, response_time):
     except Exception as e:
         print(f"Error logging API request: {e}")
 
+def is_user_admin(user):
+    """Check if user is in Admin group"""
+    return user.groups.filter(name='Admin').exists()
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
     """
     User signup - creates regular user account
-    Superusers created via Django command go to admin
-    Regular signups go to user dashboard
+    Users in 'Admin' group go to admin dashboard
+    Regular users go to user dashboard
     """
     start_time = time.time()
     username = request.data.get('username')
@@ -87,13 +91,13 @@ def signup(request):
         )
     
     try:
-        # Create new regular user (NOT admin)
+        # Create new regular user (NOT in Admin group)
         user = User.objects.create_user(
             username=username,
             password=password,
             email=email,
-            is_staff=False,  # Regular user
-            is_superuser=False  # Regular user
+            is_staff=False,
+            is_superuser=False
         )
         
         # Create user profile
@@ -128,8 +132,8 @@ def signup(request):
 def login(request):
     """
     Handle user/admin login with Django authentication
-    - Superusers (created via createsuperuser) → Admin Dashboard
-    - Regular users (created via signup) → User Dashboard
+    - Users in 'Admin' group → Admin Dashboard
+    - Regular users → User Dashboard
     """
     start_time = time.time()
     username = request.data.get('username')
@@ -147,9 +151,11 @@ def login(request):
     user = authenticate(username=username, password=password)
     
     if user is not None:
-        # Check if user is superuser (created via createsuperuser)
-        if user.is_superuser:
-            # Get or create profile
+        # Check if user is in Admin group
+        is_admin = is_user_admin(user)
+        
+        if is_admin:
+            # Admin user (in Admin group)
             profile, _ = UserProfile.objects.get_or_create(
                 user=user,
                 defaults={'role': 'admin'}
@@ -168,14 +174,16 @@ def login(request):
                 'message': 'Admin login successful',
                 'user_id': user.id,
                 'is_staff': user.is_staff,
-                'is_superuser': user.is_superuser
+                'is_admin_group': True,
+                'groups': list(user.groups.values_list('name', flat=True))
             })
         else:
-            # Regular user (created via signup)
+            # Regular user (not in Admin group)
             profile, _ = UserProfile.objects.get_or_create(
                 user=user,
                 defaults={'role': 'user'}
             )
+            profile.role = 'user'
             profile.is_active_session = True
             profile.save()
             
@@ -187,7 +195,9 @@ def login(request):
                 'username': username,
                 'email': user.email,
                 'message': 'User login successful',
-                'user_id': user.id
+                'user_id': user.id,
+                'is_admin_group': False,
+                'groups': list(user.groups.values_list('name', flat=True))
             })
     else:
         # Invalid credentials
@@ -202,7 +212,7 @@ def login(request):
 @permission_classes([AllowAny])
 def verify_admin(request):
     """
-    Verify if user is admin (superuser only)
+    Verify if user is admin (in Admin group)
     Used by frontend to check admin access
     """
     start_time = time.time()
@@ -213,16 +223,16 @@ def verify_admin(request):
     
     try:
         user = User.objects.get(username=username)
-        is_admin = user.is_superuser  # Only superusers are admins
+        is_admin = is_user_admin(user)
         
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/verify-admin/', 200, response_time)
         
         return Response({
             'is_admin': is_admin,
-            'is_staff': user.is_staff,
-            'is_superuser': user.is_superuser,
-            'username': username
+            'is_admin_group': is_admin,
+            'username': username,
+            'groups': list(user.groups.values_list('name', flat=True))
         })
     except User.DoesNotExist:
         return Response({'is_admin': False, 'error': 'User not found'})
@@ -231,8 +241,8 @@ def verify_admin(request):
 @permission_classes([AllowAny])
 def make_admin(request):
     """
-    Make a user admin (superuser)
-    Only existing superusers can do this
+    Add user to Admin group
+    Only users already in Admin group can do this
     """
     start_time = time.time()
     admin_username = request.data.get('admin_username')
@@ -248,18 +258,22 @@ def make_admin(request):
     # Authenticate admin
     admin_user = authenticate(username=admin_username, password=admin_password)
     
-    if not admin_user or not admin_user.is_superuser:
+    if not admin_user or not is_user_admin(admin_user):
         response_time = (time.time() - start_time) * 1000
         log_api_request(request, '/api/make-admin/', 403, response_time)
         return Response(
-            {'error': 'Only superusers can make other users admin'},
+            {'error': 'Only users in Admin group can make other users admin'},
             status=status.HTTP_403_FORBIDDEN
         )
     
     try:
         target_user = User.objects.get(username=target_username)
-        target_user.is_staff = True
-        target_user.is_superuser = True
+        
+        # Get or create Admin group
+        admin_group, created = Group.objects.get_or_create(name='Admin')
+        
+        # Add user to Admin group
+        target_user.groups.add(admin_group)
         target_user.save()
         
         # Update profile
@@ -274,13 +288,79 @@ def make_admin(request):
             'success': True,
             'message': f'{target_username} is now an admin',
             'username': target_username,
-            'is_staff': True,
-            'is_superuser': True
+            'is_admin_group': True,
+            'groups': list(target_user.groups.values_list('name', flat=True))
         })
         
     except User.DoesNotExist:
         return Response(
             {'error': 'Target user not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def remove_admin(request):
+    """
+    Remove user from Admin group
+    Only users in Admin group can do this
+    """
+    start_time = time.time()
+    admin_username = request.data.get('admin_username')
+    target_username = request.data.get('target_username')
+    admin_password = request.data.get('admin_password')
+    
+    if not all([admin_username, target_username, admin_password]):
+        return Response(
+            {'error': 'admin_username, target_username, and admin_password required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Authenticate admin
+    admin_user = authenticate(username=admin_username, password=admin_password)
+    
+    if not admin_user or not is_user_admin(admin_user):
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/remove-admin/', 403, response_time)
+        return Response(
+            {'error': 'Only users in Admin group can remove admin access'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        target_user = User.objects.get(username=target_username)
+        
+        # Get Admin group
+        admin_group = Group.objects.get(name='Admin')
+        
+        # Remove user from Admin group
+        target_user.groups.remove(admin_group)
+        target_user.save()
+        
+        # Update profile
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.role = 'user'
+        profile.save()
+        
+        response_time = (time.time() - start_time) * 1000
+        log_api_request(request, '/api/remove-admin/', 200, response_time)
+        
+        return Response({
+            'success': True,
+            'message': f'{target_username} is no longer an admin',
+            'username': target_username,
+            'is_admin_group': False,
+            'groups': list(target_user.groups.values_list('name', flat=True))
+        })
+        
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'Target user not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Group.DoesNotExist:
+        return Response(
+            {'error': 'Admin group does not exist'},
             status=status.HTTP_404_NOT_FOUND
         )
 
@@ -475,6 +555,7 @@ def admin_stats(request):
         recent_users = []
         for user in User.objects.select_related('profile').order_by('-date_joined')[:10]:
             profile = getattr(user, 'profile', None)
+            is_admin = is_user_admin(user)
             recent_users.append({
                 'id': user.id,
                 'name': user.get_full_name() or user.username,
@@ -483,8 +564,8 @@ def admin_stats(request):
                 'status': 'Active' if (profile and profile.is_active_session) else 'Inactive',
                 'joined': user.date_joined.strftime('%Y-%m-%d'),
                 'total_messages': profile.total_messages if profile else 0,
-                'is_staff': user.is_staff,
-                'is_superuser': user.is_superuser
+                'is_admin': is_admin,
+                'groups': list(user.groups.values_list('name', flat=True))
             })
         
         # Recent API logs
@@ -572,6 +653,9 @@ def health_check(request):
         except:
             osint_status = "error"
     
+    # Check Admin group
+    admin_group_exists = Group.objects.filter(name='Admin').exists()
+    
     response_time = (time.time() - start_time) * 1000
     log_api_request(request, '/api/health/', 200, response_time)
     
@@ -581,14 +665,16 @@ def health_check(request):
         'database_connected': db_connected,
         'ai_engine': ai_status,
         'osint_engine': osint_status,
+        'admin_group_exists': admin_group_exists,
         'features': {
             'local_ai': AI_AVAILABLE,
             'osint': OSINT_AVAILABLE,
-            'admin_control': True,
+            'group_based_admin': True,
             'signup': True
         },
         'stats': {
             'total_users': User.objects.count() if db_connected else 0,
-            'total_messages': ChatMessage.objects.count() if db_connected else 0
+            'total_messages': ChatMessage.objects.count() if db_connected else 0,
+            'admin_users': User.objects.filter(groups__name='Admin').count() if db_connected else 0
         }
     })
